@@ -1,15 +1,35 @@
 <script type="module">
   import { createApp } from 'https://unpkg.com/petite-vue?module'
 
-  const replaceURL = (href, slug, linkText) => {
+  const replaceURL = (href, slug, linkText, isFurtherReading) => {
     if (!href || !slug || !linkText) {
       return '';
     }
-    // 連到影音週報，不用處理
-    if (href.indexOf('blog.myvideo.net.tw/') >= 0) {
+
+    // myvideo.net.tw -> www.myvide.net.tw
+    href = href.replace('//myvideo.net.tw/', '//www.myvideo.net.tw/')
+
+    // 不是 myvideo.net.tw，閃
+    if (href.indexOf('.myvideo.net.tw') === -1) {
       return href;
     }
-    href = href.replace('//myvideo.net.tw/', '//www.myvideo.net.tw/')
+
+    // 連到影音週報，判斷要不要加上 from=further-reading
+    if (href.indexOf('//blog.myvideo.net.tw/') >= 0) {
+      console.log(`[blog.myvideo.net.tw], isFurtherReading:${isFurtherReading}`);
+      if (isFurtherReading) {
+        const url = new URL(href);
+        const searchParams = url.searchParams;
+        searchParams.set('from', 'further-reading');
+        searchParams.delete('utm_source');
+        searchParams.delete('utm_medium');
+        searchParams.delete('utm_campaign');
+        return url.href;
+      } else {
+        return href;
+      }
+    }
+
     // 沒有 myvideo 的網址，不用處理
     if (href.indexOf('//www.myvideo.net.tw/') === -1) {
       return href;
@@ -34,21 +54,26 @@
       }
       const parser = new DOMParser();
       const doc = parser.parseFromString(this.input, "text/html");
-      const aTags = doc.getElementsByTagName("a");
-      for (var i = 0; i < aTags.length; i++) {
-        const aTag = aTags[i];
-        const linkText = aTag.text;
-        const href = aTag.getAttribute('href');
-        const hrefAfter = replaceURL(href, this.slug, linkText);
-        console.log(`href: ${href} -> ${hrefAfter}`);
-        aTag.setAttribute('href', hrefAfter)
+      const elements = doc.body.getElementsByTagName("*");
+      var isFurtherReading = false;
+      for (var i = 0; i < elements.length; i++) {
+        const element = elements[i];
+        console.log(`element tagName:${element.tagName}, text: ${element.innerText}, isFurtherReading:${isFurtherReading}`);
+        if ('a' === element.tagName.toLowerCase()) { // <a>
+          const linkText = element.text;
+          const href = element.getAttribute('href');
+          const hrefAfter = replaceURL(href, this.slug, linkText, isFurtherReading);
+          console.log(`href: ${href} -> ${hrefAfter}`);
+          element.setAttribute('href', hrefAfter);
+        } else if (element.innerText.indexOf('延伸閱讀') >= 0) { // 延伸閱讀
+          isFurtherReading = true;
+        }
       }
       return doc.body.innerHTML;
     },
     get inputClass() {
       return {
         warn: this.input && !this.slug,
-
       };
     },
     updateSlug(e) {
