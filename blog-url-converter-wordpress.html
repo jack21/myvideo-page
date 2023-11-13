@@ -1,0 +1,271 @@
+<script type="module">
+  import { createApp } from 'https://unpkg.com/petite-vue?module'
+
+  const replaceURL = (href, slug, linkText, isFurtherReading) => {
+    if (!href || !slug || !linkText) {
+      return '';
+    }
+
+    // myvideo.net.tw -> www.myvide.net.tw
+    href = href.replace('//myvideo.net.tw/', '//www.myvideo.net.tw/')
+
+    // 不是 myvideo.net.tw，閃
+    if (href.indexOf('.myvideo.net.tw') === -1) {
+      return href;
+    }
+
+    // 連到影音週報，判斷要不要加上 from=further-reading
+    if (href.indexOf('//blog.myvideo.net.tw/') >= 0) {
+      console.log(`[blog.myvideo.net.tw], isFurtherReading:${isFurtherReading}`);
+      if (isFurtherReading) {
+        const url = new URL(href);
+        const searchParams = url.searchParams;
+        searchParams.set('from', 'further-reading');
+        searchParams.delete('utm_source');
+        searchParams.delete('utm_medium');
+        searchParams.delete('utm_campaign');
+        return url.href;
+      } else {
+        return href;
+      }
+    }
+
+    // 沒有 myvideo 的網址，不用處理
+    if (href.indexOf('//www.myvideo.net.tw/') === -1) {
+      return href;
+    }
+    const url = new URL(href);
+    const searchParams = url.searchParams;
+    searchParams.set('utm_source', 'blog');
+    searchParams.set('utm_medium', 'post');
+    searchParams.set('utm_campaign', `blog_post_${slug}_${linkText}`);
+    return url.href;
+  }
+
+  createApp({
+    slug: '',
+    input: '',
+    mounted() {
+      this.slug = localStorage.getItem('slug');
+      this.input = localStorage.getItem('html');
+    },
+    get convertedHtml() {
+      if (this.input && !this.slug) {
+        return '(請先輸入代稱 Slug)';
+      }
+      if (!this.input || !this.slug) {
+        return '';
+      }
+      localStorage.setItem('slug', this.slug);
+      localStorage.setItem('html', this.input);
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(this.input, "text/html");
+      const elements = doc.body.getElementsByTagName("*");
+      var isFurtherReading = false;
+      for (var i = 0; i < elements.length; i++) {
+        const element = elements[i];
+        // console.log(`element tagName:${element.tagName}, text: ${element.innerText}, isFurtherReading:${isFurtherReading}`);
+        if ('a' === element.tagName.toLowerCase()) { // <a>
+          const linkText = element.text;
+          const href = element.getAttribute('href');
+          const hrefAfter = replaceURL(href, this.slug, linkText, isFurtherReading);
+          // console.log(`href: ${href} -> ${hrefAfter}`);
+          element.setAttribute('href', hrefAfter);
+        } else if (element.innerText.indexOf('延伸閱讀') >= 0) { // 延伸閱讀
+          isFurtherReading = true;
+        }
+      }
+      // 序列化回 HTML 字串，並且保留原始 HTML 中的註解
+      const serializer = new XMLSerializer();
+      let html = serializer.serializeToString(doc.body);
+      html = html.replace('<body xmlns="http://www.w3.org/1999/xhtml">', '<!-- wp:group {"layout":{"type":"constrained"}} -->');
+      html = html.replace('</body>', '');
+      return html;
+    },
+    get inputClass() {
+      return {
+        warn: this.input && !this.slug,
+      };
+    },
+    updateSlug(e) {
+      this.slug = e.target.value
+    },
+    updateInput(e) {
+      this.input = e.target.value
+    },
+    copy() {
+      navigator.clipboard.writeText(this.convertedHtml);
+    },
+  }).mount('#app')
+</script>
+
+<html>
+
+<head>
+  <title>MyVideo 影音週報 - 網址轉換工具 (WordPress 版)</title>
+  <link rel="shortcut icon" href="https://blog.myvideo.net.tw/favicon.ico">
+</head>
+
+<body id="app" @vue:mounted="mounted">
+  <div class="header">
+    <img class="logo" src="https://blog.myvideo.net.tw/favicon.ico">
+    <h1>MyVideo 影音週報網址轉換工具 (WordPress 版)</h1>
+  </div>
+  <div class="editor">
+    <div class="input-panel">
+      <div class="slug">
+        <input type="text" :value="slug" @input="updateSlug" placeholder="代稱 Slug"><span class="hint">(不含
+          "post-"、".html")</span>
+      </div>
+      <!-- <p class="input-title">文章原始碼：</p> -->
+      <textarea class="input" :value="input" @input="updateInput" placeholder="文章原始碼..."></textarea>
+    </div>
+    <div class="arrow">&gt;</div>
+    <div class="output-panel">
+      <img class="copy-icon" @click="copy"
+        src="https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/content_copy/default/48px.svg">
+      <div class="output" :class="inputClass">{{ convertedHtml }}</div>
+    </div>
+  </div>
+</body>
+
+</html>
+
+<style>
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+    font-family: "SF Pro TC", "SF Pro Text", "SF Pro Icons", "PingFang TC", "Helvetica Neue", Helvetica, Arial, "Microsoft JhengHei", 微軟正黑體, sans-serif;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+  }
+
+  .logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: normal;
+    margin: 0 0 0 20px;
+  }
+
+  .editor {
+    display: grid;
+    grid-template-columns: 1fr 40px 1fr;
+    flex: 1;
+  }
+
+  .input-panel,
+  .output-panel {
+    display: flex;
+    flex-direction: column;
+    margin: 20px;
+  }
+
+  .slug {
+    margin: 10px 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .slug input {
+    font-size: 16px;
+    padding: 5px 10px;
+    border-radius: 5px;
+    border: 1px solid #aaa;
+    width: 300px;
+    height: 36px;
+  }
+
+  .slug .hint {
+    font-size: 14px;
+    color: #999;
+    margin-left: 10px
+  }
+
+  .input-title {
+    margin: 20px 10px 10px 10px;
+  }
+
+  .input,
+  .output {
+    background-color: #f6f6f6;
+    font-size: 14px;
+    padding: 20px;
+    border-radius: 10px;
+    word-break: break-word;
+  }
+
+  .input {
+    border: none;
+    resize: none;
+    outline: none;
+    font-family: unset;
+    flex: 1;
+    margin-top: 10px;
+  }
+
+  .arrow {
+    color: #aaa;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 50px;
+  }
+
+  .output-panel {
+    position: relative;
+  }
+
+  .copy-icon {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    width: 30px;
+    height: 30px;
+    padding: 5px;
+    border-radius: 100%;
+    color: #aaa;
+    cursor: pointer;
+    transition: 180ms ease-in-out all;
+  }
+
+  .copy-icon:hover {
+    background-color: #ccc;
+  }
+
+  .output {
+    flex: 1;
+  }
+
+  .output.warn {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+  }
+
+  textarea::placeholder,
+  input::placeholder {
+    color: #ccc;
+  }
+
+  input::focus {
+    outline: none !important;
+    border-color: #ccc;
+  }
+</style>
